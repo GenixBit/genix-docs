@@ -8,7 +8,8 @@ Official documentation and evolving language specification for **Genix**, the `.
 
 - `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
-- `projects-and-modules.md` — `genix.toml`, `gb new`, multi-file projects, imports, module namespaces, project checking, and frontend builds
+- `projects-and-modules.md` — `genix.toml`, `gb new`, multi-file projects, imports, module namespaces, and project checking
+- `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, type mapping, and compiler requirements
 
 ## Current project flow
 
@@ -18,6 +19,13 @@ cd hello-genix
 gb run
 gb check
 gb build
+./build/hello-genix
+```
+
+Optimized build:
+
+```bash
+gb build --release
 ```
 
 A Genix project starts with:
@@ -40,6 +48,26 @@ fn main() {
 }
 ```
 
+## Current compiler pipeline
+
+```text
+Genix project
+    ↓
+module loader
+    ↓
+lexer
+    ↓
+parser
+    ↓
+AST
+    ↓
+static type checker
+    ├── interpreter (`gb run`)
+    └── C11 native backend (`gb build`)
+            ↓
+        native executable
+```
+
 ## Documentation roadmap
 
 This repository will continue to cover:
@@ -52,7 +80,8 @@ This repository will continue to cover:
 - Control flow
 - Functions
 - Modules and imports
-- Native compiler backend
+- Genix IR
+- Native compiler backends
 - Error handling
 - Concurrency
 - Standard library reference
