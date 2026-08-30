@@ -9,6 +9,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
+- `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
 - `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, and compiler requirements
@@ -58,9 +59,32 @@ native executable
 
 `gb run` executes the checked AST through the Rust interpreter. `gb build` lowers checked code to typed Genix IR and links generated native code against `genix-runtime`.
 
+## Compiler diagnostics
+
+Direct source-file commands now render coded, source-aware diagnostics:
+
+```text
+error[E0201]: initializer for 'age' expected int, found string
+ --> src/main.gb:2:20
+   |
+ 2 |     let age: int = "twenty";
+   |                    ^^^^^^^^ type mismatch
+  = help: change the expression or annotation so the types are compatible
+```
+
+Current code families are:
+
+```text
+E000x  lexer
+E010x  parser / syntax
+E020x  static type checking
+```
+
+Lexer and parser failures carry exact token spans. The type-checking diagnostics adapter maps existing semantic errors to stable codes and relevant source locations while the frontend source-map design continues to mature.
+
 ## Typed error handling
 
-Genix now supports primitive-payload `Option` and `Result` values:
+Genix supports primitive-payload `Option` and `Result` values:
 
 ```gb
 fn load(path: string) -> Result<string,string> {
@@ -123,6 +147,7 @@ Documentation will continue to cover:
 - Full grammar and generalized type system
 - User-defined enums and generic types
 - Modules and packages
+- Rich multi-file source maps and secondary diagnostic labels
 - Genix IR optimization
 - Ownership and memory safety
 - Stable native FFI
