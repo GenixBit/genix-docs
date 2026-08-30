@@ -94,7 +94,7 @@ Functions inside the module may call each other without the namespace prefix. Th
 
 ## Commands
 
-Run the current project:
+Run the current project through the interpreter:
 
 ```bash
 gb run
@@ -118,19 +118,29 @@ Check another project:
 gb check path/to/project
 ```
 
-Create the current frontend build artifact:
+Build a native executable:
 
 ```bash
 gb build
 ```
 
-This writes:
+Optimized native build:
 
-```text
-build/genix.frontend
+```bash
+gb build --release
 ```
 
-The artifact records project metadata and confirms that module loading, parsing, and static type checking succeeded. It is **not a native executable**.
+For a project named `hello-genix`, the build directory currently contains:
+
+```text
+build/
+├── hello-genix.c
+└── hello-genix
+```
+
+The generated C file is the output of the bootstrap C11 backend. The second file is a real host-native executable produced by the system C compiler.
+
+See `native-compilation.md` for backend details, debug/release profiles, and compiler requirements.
 
 ## Current limitations
 
@@ -141,8 +151,9 @@ The first module-system version has deliberate limits:
 - Nested imports inside imported modules are not supported yet.
 - Modules cannot define `fn main()`.
 - Package/registry imports are not implemented yet.
+- Native builds currently target the host platform only.
 
-These constraints keep module resolution deterministic while the compiler frontend matures.
+These constraints keep module resolution deterministic while the compiler frontend and native backend mature.
 
 ## Next module/tooling work
 
@@ -155,6 +166,7 @@ Planned extensions include:
 - Lockfiles
 - Standard-library module resolution
 - Better module-cycle diagnostics
+- Target triples and cross-compilation
 
 ---
 
