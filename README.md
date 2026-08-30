@@ -8,6 +8,37 @@ Official documentation and evolving language specification for **Genix**, the `.
 
 - `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
+- `projects-and-modules.md` — `genix.toml`, `gb new`, multi-file projects, imports, module namespaces, project checking, and frontend builds
+
+## Current project flow
+
+```bash
+gb new hello-genix
+cd hello-genix
+gb run
+gb check
+gb build
+```
+
+A Genix project starts with:
+
+```text
+hello-genix/
+├── genix.toml
+└── src/
+    └── main.gb
+```
+
+Modules can be imported from sibling `.gb` files:
+
+```gb
+import math;
+
+fn main() {
+    let answer: int = math.add(20, 22);
+    print(answer);
+}
+```
 
 ## Documentation roadmap
 
@@ -21,6 +52,7 @@ This repository will continue to cover:
 - Control flow
 - Functions
 - Modules and imports
+- Native compiler backend
 - Error handling
 - Concurrency
 - Standard library reference
@@ -32,7 +64,7 @@ This repository will continue to cover:
 
 ```gb
 fn main() {
-    print("Hello from Genix!")
+    print("Hello from Genix!");
 }
 ```
 
