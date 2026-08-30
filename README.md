@@ -8,11 +8,12 @@ Official documentation and evolving language specification for **Genix**, the `.
 
 - `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
+- `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
 - `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, and compiler requirements
 - `runtime-abi.md` — external runtime integration, ABI v1, lifecycle, allocation, strings, output, and compatibility
-- `standard-library.md` — stdlib discovery, compatibility, and standard APIs
+- `standard-library.md` — stdlib discovery, compatibility, safe I/O, and standard APIs
 - `native-intrinsics.md` — bootstrap host-service bridge for input, filesystem, environment, and process control
 
 ## Current project flow
@@ -57,6 +58,38 @@ native executable
 
 `gb run` executes the checked AST through the Rust interpreter. `gb build` lowers checked code to typed Genix IR and links generated native code against `genix-runtime`.
 
+## Typed error handling
+
+Genix now supports primitive-payload `Option` and `Result` values:
+
+```gb
+fn load(path: string) -> Result<string,string> {
+    let text: string = fs.try_read_text(path)?;
+    return Ok(text);
+}
+```
+
+Exhaustive matching is required:
+
+```gb
+match result {
+    Ok(value) => {
+        print(value);
+    }
+    Err(error) => {
+        print(error);
+    }
+}
+```
+
+Current safe host-facing APIs include:
+
+```text
+process.env_option(name) -> Option<string>
+fs.try_read_text(path) -> Result<string,string>
+fs.try_write_text(path, text) -> Result<bool,string>
+```
+
 ## Standard library and host services
 
 Current standard modules include:
@@ -71,19 +104,11 @@ string
 
 Portable APIs remain ordinary `.gb` code. Foundational OS-facing calls use the bootstrap host intrinsic bridge so the same public Genix API works in both interpreter and native modes.
 
-```text
-io.input
-fs.read_text
-fs.write_text
-process.env
-process.exit
-```
-
 The compiler validates stdlib compatibility metadata against language version `0.0.1` and runtime ABI `1`.
 
 ## Genix IR
 
-The IR records resolved function names, typed variables and expressions, structured control flow, and explicit safe `int → float` casts.
+The IR records resolved function names, typed variables and expressions, structured control flow, explicit safe `int → float` casts, Option/Result constructors, matches, and Result propagation.
 
 ```bash
 gb ir
@@ -95,11 +120,11 @@ gb ir path/to/project
 Documentation will continue to cover:
 
 - Getting started and language tour
-- Full grammar and type system
+- Full grammar and generalized type system
+- User-defined enums and generic types
 - Modules and packages
 - Genix IR optimization
 - Ownership and memory safety
-- Structured `Result` / `Option` error handling
 - Stable native FFI
 - Runtime/platform APIs
 - Standard library reference
