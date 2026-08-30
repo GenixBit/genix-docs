@@ -4,9 +4,14 @@ Official documentation and evolving language specification for **Genix**, the `.
 
 > Status: pre-alpha. Language syntax and behavior documented here may change before the first stable release.
 
-## Documentation structure
+## Current documentation
 
-This repository will cover:
+- `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
+- `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
+
+## Documentation roadmap
+
+This repository will continue to cover:
 
 - Getting started
 - Language tour
@@ -28,6 +33,19 @@ This repository will cover:
 ```gb
 fn main() {
     print("Hello from Genix!")
+}
+```
+
+## Typed function example
+
+```gb
+fn add(a: int, b: int) -> int {
+    return a + b;
+}
+
+fn main() {
+    let result: int = add(10, 20);
+    print(result);
 }
 ```
 
