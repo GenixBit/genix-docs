@@ -2,7 +2,7 @@
 
 Official documentation and evolving language specification for **Genix**, the `.gb` programming language by **GenixBit**.
 
-> Status: pre-alpha. Language syntax, IR, and compiler behavior documented here may change before the first stable release.
+> Status: pre-alpha. Language syntax, IR, runtime ABI, and compiler behavior documented here may change before the first stable release.
 
 ## Current documentation
 
@@ -11,6 +11,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `projects-and-modules.md` — `genix.toml`, `gb new`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
 - `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, type mapping, and compiler requirements
+- `runtime-abi.md` — external `genix-runtime` integration, ABI v1, lifecycle, allocation, strings, printing, and compatibility
 
 ## Current project flow
 
@@ -20,6 +21,7 @@ cd hello-genix
 gb run
 gb check
 gb ir
+export GENIX_RUNTIME=/path/to/genix-runtime
 gb build
 ./build/hello-genix
 ```
@@ -46,16 +48,21 @@ AST
 static type checker
     ↓
 typed Genix IR
-    ├── C11 backend → native executable
-    ├── LLVM backend → planned
-    └── WebAssembly backend → planned
+    ↓
+C11 backend
+    ↓
+generated application code
+    +
+Genix Runtime ABI v1
+    ↓
+native executable
 ```
 
-`gb run` currently executes the checked AST through the interpreter. `gb build` lowers the checked AST to typed Genix IR and sends that IR to the native C11 backend.
+LLVM and WebAssembly backends are planned. `gb run` currently executes the checked AST through the interpreter; `gb build` lowers to typed Genix IR and links generated code against `genix-runtime`.
 
 ## Genix IR
 
-The IR is the compiler boundary between language semantics and target-specific backends. It currently records resolved function names, typed variables, typed expressions, structured control flow, and explicit safe `int → float` casts.
+The IR is the compiler boundary between language semantics and target-specific backends. It records resolved function names, typed variables, typed expressions, structured control flow, and explicit safe `int → float` casts.
 
 Inspect it with:
 
@@ -64,6 +71,10 @@ gb ir
 gb ir path/to/project
 gb ir examples/functions.gb
 ```
+
+## Genix Runtime
+
+The runtime is a separate low-level repository with a public C ABI. Native compiler output targets `include/genix/runtime.h` and currently uses runtime services for lifecycle management, tracked allocation, string operations, panic handling, and typed output.
 
 ## Documentation roadmap
 
@@ -78,6 +89,7 @@ This repository will continue to cover:
 - Functions
 - Modules and imports
 - Genix IR and optimization passes
+- Runtime ABI and memory model
 - Native compiler backends
 - Target triples and cross-compilation
 - Error handling
@@ -95,21 +107,6 @@ fn main() {
 }
 ```
 
-## Typed function example
-
-```gb
-fn add(a: int, b: int) -> int {
-    return a + b;
-}
-
-fn main() {
-    let result: int = add(10, 20);
-    print(result);
-}
-```
-
-Genix source files use the `.gb` extension.
-
 ## Core identity
 
 | Item | Value |
@@ -119,11 +116,12 @@ Genix source files use the `.gb` extension.
 | Primary CLI | `gb` |
 | Compiler name | `gbc` |
 | Intermediate representation | Genix IR |
+| Runtime | Genix Runtime ABI |
 | Creator | GenixBit |
 
 ## Documentation policy
 
-Experimental proposals should be clearly marked as experimental. Stable behavior should only be described as final after it has corresponding compiler tests and an accepted language specification.
+Experimental proposals should be clearly marked as experimental. Stable behavior should only be described as final after it has corresponding compiler/runtime tests and an accepted specification.
 
 ---
 
