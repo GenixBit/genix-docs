@@ -10,6 +10,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
 - `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
+- `testing.md` — `gb test`, test discovery, `test` blocks, assertions, isolation, and current testing limitations
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
 - `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, and compiler requirements
@@ -28,10 +29,13 @@ export GENIX_RUNTIME=/path/to/genix-runtime
 
 gb run
 gb check
+gb test
 gb ir
 gb build
 ./build/hello-genix
 ```
+
+`gb new` creates `src/main.gb` plus a starter `tests/smoke.gb` test.
 
 ## Current compiler pipeline
 
@@ -59,9 +63,45 @@ native executable
 
 `gb run` executes the checked AST through the Rust interpreter. `gb build` lowers checked code to typed Genix IR and links generated native code against `genix-runtime`.
 
+Testing is intentionally a parallel developer-tooling path:
+
+```text
+tests/*.gb
+    ↓
+Genix test frontend
+    ↓
+normal parser + AST + type checker
+    ↓
+fresh interpreter per test
+```
+
+Test declarations do not enter normal Genix IR/native application builds.
+
+## Testing
+
+Project tests live in `tests/*.gb` and use named test blocks:
+
+```gb
+test "arithmetic works" {
+    assert(2 + 2 == 4);
+}
+```
+
+Run them with:
+
+```bash
+gb test
+gb test path/to/project
+gb test path/to/test.gb
+```
+
+The bootstrap runner supports `assert(condition)`, `fail(message)`, and `pass()`, type-checks the complete suite, runs each test with a fresh interpreter instance, prints pass/fail totals, and returns a non-zero status when any test fails.
+
+See `testing.md` for the isolation model and current pre-alpha limitations.
+
 ## Compiler diagnostics
 
-Direct source-file commands now render coded, source-aware diagnostics:
+Direct source-file commands render coded, source-aware diagnostics:
 
 ```text
 error[E0201]: initializer for 'age' expected int, found string
@@ -148,6 +188,8 @@ Documentation will continue to cover:
 - User-defined enums and generic types
 - Modules and packages
 - Rich multi-file source maps and secondary diagnostic labels
+- Formatter and formatting specification
+- Richer testing diagnostics, filtering, and native test execution
 - Genix IR optimization
 - Ownership and memory safety
 - Stable native FFI
@@ -156,7 +198,7 @@ Documentation will continue to cover:
 - Target triples and cross-compilation
 - LLVM and WebAssembly backends
 - Concurrency and async
-- Testing, formatting, and editor tooling
+- Language server and editor tooling
 - Language specification and compatibility policy
 
 ## Hello, Genix
