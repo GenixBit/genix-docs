@@ -11,6 +11,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
 - `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
 - `testing.md` — `gb test`, test discovery, `test` blocks, assertions, isolation, and current testing limitations
+- `formatting.md` — `gb fmt`, canonical style, comment preservation, idempotence, project discovery, and `--check`
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
 - `native-compilation.md` — native `gb build`, C11 backend, debug/release builds, and compiler requirements
@@ -27,9 +28,10 @@ cd hello-genix
 export GENIX_STDLIB=/path/to/genix-stdlib
 export GENIX_RUNTIME=/path/to/genix-runtime
 
-gb run
+gb fmt --check
 gb check
 gb test
+gb run
 gb ir
 gb build
 ./build/hello-genix
@@ -63,19 +65,19 @@ native executable
 
 `gb run` executes the checked AST through the Rust interpreter. `gb build` lowers checked code to typed Genix IR and links generated native code against `genix-runtime`.
 
-Testing is intentionally a parallel developer-tooling path:
+Testing and formatting are intentionally source/developer-tooling paths rather than application backend concerns.
 
 ```text
-tests/*.gb
-    ↓
-Genix test frontend
-    ↓
-normal parser + AST + type checker
+tests/*.gb                 src/**/*.gb + tests/**/*.gb
+    ↓                                   ↓
+Genix test frontend                 gb fmt
+    ↓                                   ↓
+parser + AST + checker       lexical canonical formatter
     ↓
 fresh interpreter per test
 ```
 
-Test declarations do not enter normal Genix IR/native application builds.
+Test declarations and formatter metadata do not enter normal Genix IR/native application builds.
 
 ## Testing
 
@@ -98,6 +100,22 @@ gb test path/to/test.gb
 The bootstrap runner supports `assert(condition)`, `fail(message)`, and `pass()`, type-checks the complete suite, runs each test with a fresh interpreter instance, prints pass/fail totals, and returns a non-zero status when any test fails.
 
 See `testing.md` for the isolation model and current pre-alpha limitations.
+
+## Formatting
+
+Genix now has one canonical source formatter:
+
+```bash
+gb fmt
+gb fmt src/main.gb
+gb fmt --check
+```
+
+For project targets it recursively formats `src/**/*.gb` and `tests/**/*.gb`. It uses four-space indentation, canonical operator/type/function spacing, compact `Option<T>` / `Result<T,string>` punctuation, and preserves string contents plus `//` comments.
+
+`gb fmt --check` performs no writes and returns a non-zero status if source needs formatting, making it suitable for CI. Formatter output is idempotent and is validated by compiler CI before the formatted source is passed back through `gb check` and `gb test`.
+
+See `formatting.md` for the complete canonical style and architecture.
 
 ## Compiler diagnostics
 
@@ -188,7 +206,6 @@ Documentation will continue to cover:
 - User-defined enums and generic types
 - Modules and packages
 - Rich multi-file source maps and secondary diagnostic labels
-- Formatter and formatting specification
 - Richer testing diagnostics, filtering, and native test execution
 - Genix IR optimization
 - Ownership and memory safety
