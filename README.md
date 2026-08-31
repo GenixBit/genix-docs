@@ -9,8 +9,8 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `control-flow.md` — mutability, comparisons, boolean logic, `if` / `else`, `while`, and lexical block scope
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
-- `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
-- `source-maps.md` — multi-file source identity, function/module mappings, primary spans, and secondary diagnostic labels
+- `diagnostics.md` — compiler error codes, checker-native semantic diagnostics, source spans, labels, help text, and CI contract
+- `source-maps.md` — multi-file source identity, function/module mappings, structured semantic resolution, and related diagnostic locations
 - `testing.md` — `gb test`, test discovery, `T0001` / `T0002` failures, exact assertion/fail spans, isolation, and current testing limitations
 - `formatting.md` — `gb fmt`, canonical style, comment preservation, idempotence, project discovery, and `--check`
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
@@ -52,6 +52,11 @@ module loader + SourceMap
 lexer → parser → AST
     ↓
 static type checker
+    ├── checker-native E020x semantic diagnostics
+    │       ↓
+    │   SourceMap resolution
+    │       ↓
+    │   primary + related source locations
     ↓
 typed Genix IR
     ↓
@@ -108,7 +113,7 @@ See `testing.md` for the isolation model, failure-channel architecture, and curr
 
 ## Formatting
 
-Genix now has one canonical source formatter:
+Genix has one canonical source formatter:
 
 ```bash
 gb fmt
@@ -145,9 +150,13 @@ E020x  static type checking
 
 Test failures use the separate `T000x` family.
 
-Project/module loading maintains a `SourceMap` that records original file text plus canonical function/module ownership. Imported-module lexer/parser errors therefore retain their real filenames, and semantic errors can be mapped back to the original module after the compiler merges module functions for checking.
+The static type checker now assigns `E020x` codes, messages, labels, help, canonical function context, semantic location hints, and optional related functions directly when an error is detected. User-facing direct-file and project checks consume that structured semantic error through the same `check_diagnostic(...)` path.
 
-Diagnostics also support secondary locations:
+Project/module loading maintains a `SourceMap` that records original file text plus canonical function/module ownership. It resolves checker-owned function context to the original source file and adds related locations such as a module reference or called-function definition.
+
+The previous project-layer approach of parsing semantic error strings, stubbing unrelated functions, and re-running the checker to infer the failing module has been removed.
+
+Diagnostics support secondary locations:
 
 ```text
  --> src/math.gb:2:22
@@ -156,7 +165,7 @@ Diagnostics also support secondary locations:
 
 The primary location identifies the failing source. Related `:::` locations can show where a module was referenced or where a called function was defined.
 
-The executable AST and Genix IR intentionally remain independent from diagnostic rendering metadata. See `source-maps.md` for the source-map contract, secondary-label model, and current semantic-adapter limitations.
+Exact semantic expression spans are the remaining precision step: the checker already emits structured location intent, while the current SourceMap resolver finds the corresponding span in original source text. See `diagnostics.md` and `source-maps.md` for the complete contract.
 
 ## Typed error handling
 
@@ -223,7 +232,9 @@ Documentation will continue to cover:
 - Full grammar and generalized type system
 - User-defined enums and generic types
 - Modules and packages
-- Structured semantic diagnostics with checker-native source spans
+- Machine-readable diagnostic output and a stable editor/LSP schema
+- Exact semantic expression `SourceId` / `Span` attachment
+- Diagnostic notes, suggestions, and richer multi-label errors
 - Expected/actual assertion value reporting, filtering, and native test execution
 - Genix IR optimization
 - Ownership and memory safety
