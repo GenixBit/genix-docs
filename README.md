@@ -11,7 +11,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
 - `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
 - `source-maps.md` — multi-file source identity, function/module mappings, primary spans, and secondary diagnostic labels
-- `testing.md` — `gb test`, test discovery, `test` blocks, assertions, isolation, and current testing limitations
+- `testing.md` — `gb test`, test discovery, `T0001` / `T0002` failures, exact assertion/fail spans, isolation, and current testing limitations
 - `formatting.md` — `gb fmt`, canonical style, comment preservation, idempotence, project discovery, and `--check`
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
 - `intermediate-representation.md` — typed Genix IR, lowering, explicit casts, backend contract, and `gb ir`
@@ -76,6 +76,8 @@ Genix test frontend                 gb fmt
 parser + AST + checker       lexical canonical formatter
     ↓
 fresh interpreter per test
+    ↓
+T0001 / T0002 diagnostics
 ```
 
 Test declarations and formatter metadata do not enter normal Genix IR/native application builds.
@@ -98,9 +100,11 @@ gb test path/to/project
 gb test path/to/test.gb
 ```
 
-The bootstrap runner supports `assert(condition)`, `fail(message)`, and `pass()`, type-checks the complete suite, runs each test with a fresh interpreter instance, prints pass/fail totals, and returns a non-zero status when any test fails.
+The runner supports `assert(condition)`, `fail(message)`, and `pass()`, type-checks the complete suite, runs each test with a fresh interpreter instance, prints pass/fail totals, and returns a non-zero status when any test fails.
 
-See `testing.md` for the isolation model and current pre-alpha limitations.
+Failed assertions use `T0001` and point to the original assertion expression. Explicit `fail(message)` uses `T0002`, preserves the message, and points to the original failure site. Genuine interpreter/runtime errors remain runtime errors and are not converted into assertion failures.
+
+See `testing.md` for the isolation model, failure-channel architecture, and current pre-alpha limitations.
 
 ## Formatting
 
@@ -131,7 +135,7 @@ error[E0201]: initializer for 'age' expected int, found string
   = help: change the expression or annotation so the types are compatible
 ```
 
-Current code families are:
+Current compiler-error families are:
 
 ```text
 E000x  lexer
@@ -139,7 +143,9 @@ E010x  parser / syntax
 E020x  static type checking
 ```
 
-Project/module loading now maintains a `SourceMap` that records original file text plus canonical function/module ownership. Imported-module lexer/parser errors therefore retain their real filenames, and semantic errors can be mapped back to the original module after the compiler merges module functions for checking.
+Test failures use the separate `T000x` family.
+
+Project/module loading maintains a `SourceMap` that records original file text plus canonical function/module ownership. Imported-module lexer/parser errors therefore retain their real filenames, and semantic errors can be mapped back to the original module after the compiler merges module functions for checking.
 
 Diagnostics also support secondary locations:
 
@@ -217,8 +223,8 @@ Documentation will continue to cover:
 - Full grammar and generalized type system
 - User-defined enums and generic types
 - Modules and packages
-- Structured semantic diagnostics with expression-level source spans
-- Richer testing diagnostics, filtering, and native test execution
+- Structured semantic diagnostics with checker-native source spans
+- Expected/actual assertion value reporting, filtering, and native test execution
 - Genix IR optimization
 - Ownership and memory safety
 - Stable native FFI
