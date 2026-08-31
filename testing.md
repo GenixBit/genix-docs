@@ -55,7 +55,7 @@ test "strings compare" {
 
 Test names are shown directly in runner output, so names should describe behavior rather than implementation details.
 
-## Assertions
+## Assertions and explicit failures
 
 ### `assert(condition)`
 
@@ -68,7 +68,16 @@ test "comparison works" {
 }
 ```
 
-A false assertion fails the current test.
+A false assertion fails the current test with test diagnostic `T0001` and points at the original assertion expression.
+
+```text
+✗ comparison works
+error[T0001]: assertion failed
+ --> tests/math.gb:3:12
+   |
+ 3 |     assert(value > 20);
+   |            ^^^^^^^^^^ assertion evaluated to false
+```
 
 ### `fail(message)`
 
@@ -76,13 +85,22 @@ A false assertion fails the current test.
 
 ```gb
 test "invalid branch is unreachable" {
-    if false {
-        fail("this branch should not execute");
+    if true {
+        fail("unexpected branch");
     }
 }
 ```
 
-The bootstrap runner currently validates the message expression but does not yet preserve the custom message in the final failure report.
+The custom message is preserved and reported using `T0002`:
+
+```text
+✗ invalid branch is unreachable
+error[T0002]: test failed: unexpected branch
+ --> tests/branch.gb:3:9
+   |
+ 3 |         fail("unexpected branch");
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^ explicit test failure
+```
 
 ### `pass()`
 
@@ -102,6 +120,36 @@ test "missing file returns Err" {
     }
 }
 ```
+
+## Test diagnostic codes
+
+The test runner has a separate diagnostic family from compiler errors:
+
+| Code | Meaning |
+|---|---|
+| `T0001` | `assert(condition)` evaluated to false |
+| `T0002` | Explicit `fail(message)` |
+
+Compiler diagnostics continue to use the `E....` families. Runtime failures remain runtime errors rather than being converted into `T0001` or `T0002`.
+
+For example:
+
+```gb
+test "runtime failure remains runtime" {
+    let value: int = 1 / 0;
+    print(value);
+}
+```
+
+is reported as a runtime failure:
+
+```text
+✗ runtime failure remains runtime
+  runtime error: division by zero
+  at tests/runtime.gb:1:1
+```
+
+The exact fallback test-block location can become more precise when runtime expression spans are generalized, but the failure category is already distinct from assertion diagnostics.
 
 ## Helper functions
 
@@ -135,7 +183,7 @@ Or provide a project path:
 gb test path/to/project
 ```
 
-Example output:
+Successful example:
 
 ```text
 Genix Test Runner
@@ -147,20 +195,7 @@ Genix Test Runner
 0 failed
 ```
 
-A failed suite returns a non-zero process exit status:
-
-```text
-Genix Test Runner
-
-✗ addition works
-  assertion failed
-  at tests/math.gb
-
-0 passed
-1 failed
-```
-
-This allows `gb test` to be used directly in CI pipelines.
+A failed suite returns a non-zero process exit status, making `gb test` directly usable in CI.
 
 ## Standalone test files
 
@@ -183,6 +218,8 @@ test source
     ↓
 test frontend
     ↓
+record original assertion/fail spans
+    ↓
 normal Genix parser + AST
     ↓
 normal static type checker
@@ -190,6 +227,8 @@ normal static type checker
 select one test as temporary main
     ↓
 fresh interpreter
+    ↓
+runner classifies test failure vs runtime error
 ```
 
 A test therefore does not retain local variables or interpreter scopes from a previously executed test.
@@ -216,22 +255,47 @@ test "bad type" {
 
 The testing frontend reuses the normal parser and semantic checker rather than implementing a second Genix language.
 
-## Bootstrap implementation note
+## Dedicated test-failure channel
 
-The current pre-alpha implementation represents `assert`/`fail` failure internally using a controlled runtime sentinel based on the interpreter's divide-by-zero failure path.
+The old bootstrap implementation used division by zero as an assertion sentinel. That mechanism has been removed.
 
-This is an implementation detail, not intended language semantics. A consequence of the current bootstrap is that a genuine division-by-zero runtime error inside a test can also appear as `assertion failed`.
+The current pre-alpha runner assigns each `assert` / `fail` site an internal site ID and records its original source span. A failed site enters a private per-run test trap, which the runner decodes back into `T0001` or `T0002` plus the original source location.
 
-A later test-runtime revision will replace this with a dedicated test failure intrinsic/result so assertion failures, user `fail(...)` messages, and unrelated runtime errors remain distinct.
+Conceptually:
+
+```text
+assert(expression)
+      ↓ false
+private test site ID
+      ↓
+test-only failure trap
+      ↓
+T0001 + original expression span
+```
+
+```text
+fail(message)
+      ↓
+private test site ID + message
+      ↓
+test-only failure trap
+      ↓
+T0002 + original fail span + message
+```
+
+The trap key is unique for each runner invocation, so unrelated interpreter errors are not classified as test failures.
+
+This is still bootstrap infrastructure: internally, the private trap currently piggybacks on the existing host file-read failure path. It is not part of the public Genix filesystem API or Runtime ABI contract. A future structured interpreter/test runtime signal can replace that mechanism without changing `T0001` / `T0002` user-facing behavior.
 
 ## Current limitations
 
 - Tests execute through the interpreter; native test binaries are not generated yet.
 - Test blocks are recognized only by `gb test`, not by normal `gb run`, `gb check`, `gb ir`, or `gb build` parsing.
 - Test-file imports are not independently resolved yet.
-- `fail(message)` does not yet print its custom message.
-- Assertion source spans and expression-value diffs are planned improvements.
+- Runtime failures currently fall back to the test-block source position rather than an exact runtime-expression span.
+- Assertion value diffs such as expected/actual are not implemented yet.
 - Filtering, ignored tests, setup/teardown hooks, benchmarks, snapshots, and parallel execution are not implemented yet.
+- The private pre-alpha test trap should eventually become a structured interpreter/runtime test signal.
 
 ## Design direction
 
@@ -239,9 +303,9 @@ The current design intentionally keeps testing metadata out of executable Genix 
 
 Planned improvements include:
 
-- dedicated assertion/test-failure runtime channel
-- exact assertion source spans
+- structured interpreter-level test failure signaling
 - expected/actual value reporting
+- exact runtime-error expression spans
 - test-name filtering
 - module imports inside test files
 - setup and teardown hooks
