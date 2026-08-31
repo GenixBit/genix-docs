@@ -2,7 +2,7 @@
 
 Genix compiler diagnostics are designed to be stable, source-aware, and useful from the command line, editors, CI systems, and future language-server tooling.
 
-> Status: pre-alpha. Error codes, multi-file source identity, and primary/related diagnostic locations are now part of the developer-facing diagnostics contract, but individual wording may still improve before Genix 1.0.
+> Status: pre-alpha. Error codes, multi-file source identity, checker-owned semantic classification, and primary/related diagnostic locations are now part of the developer-facing diagnostics contract, but individual wording may still improve before Genix 1.0.
 
 ## Diagnostic format
 
@@ -30,6 +30,46 @@ The diagnostic model contains:
 - optional help text
 
 Lexer and parser errors use exact token/source spans. The diagnostics engine also supports secondary labels across files, rendered with `:::` rather than the primary `-->` marker.
+
+## Checker-native semantic diagnostics
+
+The static type checker now constructs semantic failures structurally at the point where they are detected.
+
+Conceptually:
+
+```text
+SemanticError
+├── code
+├── message
+├── label
+├── help
+├── current canonical function
+├── semantic location hint
+└── optional related function
+```
+
+The checker exposes a structured diagnostic path:
+
+```text
+AST + SourceMap
+      ↓
+Static Type Checker
+      ↓
+checker-owned SemanticError
+      ↓
+SourceMap resolution
+      ↓
+Diagnostic
+├── E020x code
+├── primary source + span
+├── primary label
+├── related locations
+└── help
+```
+
+This replaces the previous pre-alpha pipeline that returned a formatted type-error string and later inspected its wording to choose an error code. Project checking also no longer stubs unrelated functions and re-runs the checker to guess which merged module produced the error.
+
+The legacy `check(...) -> Result<(), String>` entry point remains for internal compatibility with interpreter/test/bootstrap code, but it is derived from the same structured checker error. User-facing direct-file and project diagnostics use `check_diagnostic(...)`.
 
 ## Multi-file example
 
@@ -103,7 +143,7 @@ produces an `E0001` diagnostic at the invalid character.
 | `E0103` | Invalid `match` pattern |
 | `E0104` | Invalid `Some` / `Ok` / `Err` / `None` constructor use |
 
-Parser diagnostics retain the exact token span and source filename supplied by the frontend. Project-loaded modules now use the same structured lexer/parser path, so syntax failures in imported `.gb` files report the imported file directly.
+Parser diagnostics retain the exact token span and source filename supplied by the frontend. Project-loaded modules use the same structured lexer/parser path, so syntax failures in imported `.gb` files report the imported file directly.
 
 ### Type checking — `E020x`
 
@@ -119,9 +159,8 @@ Parser diagnostics retain the exact token span and source filename supplied by t
 | `E0208` | Invalid value use, wrapper context, or `void` use |
 | `E0209` | Duplicate declaration, parameter, or function |
 | `E0210` | Invalid or missing `fn main()` entry point |
-| `E0299` | Unclassified pre-alpha type-checker error |
 
-`E0299` is a compatibility fallback. New recurring error classes should receive a dedicated stable code instead of relying on the fallback.
+These codes are assigned directly by the checker. There is no active fallback that classifies semantic errors by searching their rendered message text.
 
 ## Type mismatch example
 
@@ -131,7 +170,7 @@ fn main() {
 }
 ```
 
-The CLI reports `E0201` and points at the initializer value.
+The checker produces `E0201`; SourceMap resolution points the diagnostic at the initializer value.
 
 ## Undefined names
 
@@ -141,7 +180,7 @@ fn main() {
 }
 ```
 
-Undefined variables and functions are classified as `E0202`.
+Undefined variables and functions are emitted as `E0202` by the checker.
 
 ## Mutability
 
@@ -152,7 +191,25 @@ fn main() {
 }
 ```
 
-Reassigning an immutable `let` binding is `E0203`; the help text recommends `mut` when reassignment is intentional.
+Reassigning an immutable `let` binding is `E0203`; the checker also attaches the help text recommending `mut` when reassignment is intentional.
+
+## Call signatures and related definitions
+
+Function-call mismatches are `E0207`.
+
+```gb
+fn add(value: int) -> int {
+    return value;
+}
+
+fn main() {
+    print(add(1, 2));
+}
+```
+
+The semantic error records `add` as the related function. The diagnostic resolver can therefore attach the function definition as a secondary location rather than recovering the function name from a formatted error string.
+
+For imported calls the same mechanism can cross files through canonical names such as `math.add`.
 
 ## Match exhaustiveness
 
@@ -168,7 +225,7 @@ fn main() {
 }
 ```
 
-An `Option<T>` match must handle both `Some(...)` and `None`; a `Result<T,string>` match must handle both `Ok(...)` and `Err(...)`. Violations are `E0205`.
+An `Option<T>` match must handle both `Some(...)` and `None`; a `Result<T,string>` match must handle both `Ok(...)` and `Err(...)`. Violations are checker-owned `E0205` errors.
 
 ## `?` propagation
 
@@ -187,18 +244,18 @@ project entry file
 
 This mapping survives the current module-namespacing and merge step used by the type checker.
 
-Semantic errors are therefore mapped back to the correct source file after checking rather than being reported against a synthetic merged program.
+The checker retains the canonical function identity on a semantic failure. The SourceMap then resolves that function to the correct original file without probing or re-running the checker.
 
-The current semantic checker still returns pre-alpha string errors internally. A project-layer adapter identifies the failing function while preserving all project signatures, then maps that canonical function through the source map. The planned end state is a structured semantic checker that emits source IDs/spans directly.
+Semantic expression spans are still a transitional layer: the checker emits structured location intent such as initializer, assignment, call, return, `if`, `while`, or `match`; the current resolver finds the corresponding span in the original source text. Exact source IDs/spans attached directly to semantic AST nodes are a future refinement.
 
 ## Secondary locations
 
-Diagnostics can carry multiple related locations.
+Diagnostics can carry multiple related source locations.
 
 Current uses include:
 
 - module reference related to an error inside an imported module
-- imported function definition related to a call/signature problem from another file
+- imported or local function definition related to a call/signature problem
 
 Related locations use:
 
@@ -210,7 +267,7 @@ This model is also intended for future declaration/borrow/trait/reference diagno
 
 ## CLI behavior
 
-These commands use the diagnostics renderer for direct `.gb` source files:
+These commands use structured diagnostics for direct `.gb` source files:
 
 ```bash
 gb check src/main.gb
@@ -230,40 +287,48 @@ Errors discovered while loading/checking imported modules can therefore retain m
 
 ## CI contract
 
-`genix-lang` CI intentionally compiles invalid programs and verifies that diagnostics include:
+`genix-lang` contains both the main toolchain workflow and a dedicated Semantic Diagnostics workflow.
+
+The semantic workflow intentionally compiles invalid programs and verifies:
 
 ```text
-error[E....]
-filename:line:column
-^
-help:
-```
-
-The Rust compiler tests also construct a broken multi-file project and verify that the resulting project diagnostic contains:
-
-```text
-primary imported-module filename
-secondary ::: entry filename
+E0207 for a direct function-call signature mismatch
+primary call-site filename/line
+related function definition
+E0201 inside an imported module
+primary imported-module filename/line
+secondary ::: entry filename/line
 module referenced here
 ```
 
-This prevents multi-file diagnostics from silently collapsing back to unstructured merged-project errors.
+Rust unit tests also verify that the checker itself owns the semantic code and initializer span contract.
+
+This prevents semantic diagnostics from silently regressing to error-text classification or merged-project function guessing.
+
+## Current limitations
+
+- Semantic error objects are structured, but exact expression-level source spans are not yet stored on executable AST/typed nodes.
+- Some semantic spans are resolved from structured checker location hints against the original source text.
+- Related call locations currently use source lookup rather than a full semantic reference graph.
+- Test files use their separate test frontend and do not yet participate in the project SourceMap.
+- Generated/native C source maps are not implemented.
+- Machine-readable JSON output is not implemented yet.
 
 ## Design direction
 
 The diagnostics model is intended to support future:
 
+- stable machine-readable JSON diagnostics
 - warnings and lints
-- structured semantic expression spans
+- exact semantic expression source IDs/spans
 - multiple primary/secondary labels
 - notes and suggestions
-- machine-readable JSON diagnostics
 - IDE/LSP diagnostics
 - quick fixes
 - go-to-definition/reference metadata
 - macro / generated-source traces if those language features are added
 
-The executable AST and Genix IR remain independent from CLI rendering concerns. Source metadata belongs to the frontend/source-map layer so interpreters and backends do not need to carry presentation-specific diagnostic state.
+The executable IR remains independent from CLI rendering concerns. Source metadata belongs to the frontend/source-map layer so interpreters and backends do not need to carry presentation-specific terminal state.
 
 ---
 
