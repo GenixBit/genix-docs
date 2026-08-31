@@ -10,6 +10,7 @@ Official documentation and evolving language specification for **Genix**, the `.
 - `functions-and-types.md` — functions, parameters, returns, explicit types, type inference, static checking, and numeric widening
 - `error-handling.md` — `Option<T>`, `Result<T,string>`, `Some/None`, `Ok/Err`, exhaustive `match`, and `?` propagation
 - `diagnostics.md` — compiler error codes, source spans, labels, help text, and diagnostics architecture
+- `source-maps.md` — multi-file source identity, function/module mappings, primary spans, and secondary diagnostic labels
 - `testing.md` — `gb test`, test discovery, `test` blocks, assertions, isolation, and current testing limitations
 - `formatting.md` — `gb fmt`, canonical style, comment preservation, idempotence, project discovery, and `--check`
 - `projects-and-modules.md` — `genix.toml`, multi-file projects, imports, module namespaces, and project checking
@@ -46,7 +47,7 @@ Genix application
     +
 Genix standard library
     ↓
-module loader
+module loader + SourceMap
     ↓
 lexer → parser → AST
     ↓
@@ -117,7 +118,7 @@ For project targets it recursively formats `src/**/*.gb` and `tests/**/*.gb`. It
 
 See `formatting.md` for the complete canonical style and architecture.
 
-## Compiler diagnostics
+## Compiler diagnostics and source maps
 
 Direct source-file commands render coded, source-aware diagnostics:
 
@@ -138,7 +139,18 @@ E010x  parser / syntax
 E020x  static type checking
 ```
 
-Lexer and parser failures carry exact token spans. The type-checking diagnostics adapter maps existing semantic errors to stable codes and relevant source locations while the frontend source-map design continues to mature.
+Project/module loading now maintains a `SourceMap` that records original file text plus canonical function/module ownership. Imported-module lexer/parser errors therefore retain their real filenames, and semantic errors can be mapped back to the original module after the compiler merges module functions for checking.
+
+Diagnostics also support secondary locations:
+
+```text
+ --> src/math.gb:2:22
+ ::: src/main.gb:4:11
+```
+
+The primary location identifies the failing source. Related `:::` locations can show where a module was referenced or where a called function was defined.
+
+The executable AST and Genix IR intentionally remain independent from diagnostic rendering metadata. See `source-maps.md` for the source-map contract, secondary-label model, and current semantic-adapter limitations.
 
 ## Typed error handling
 
@@ -205,7 +217,7 @@ Documentation will continue to cover:
 - Full grammar and generalized type system
 - User-defined enums and generic types
 - Modules and packages
-- Rich multi-file source maps and secondary diagnostic labels
+- Structured semantic diagnostics with expression-level source spans
 - Richer testing diagnostics, filtering, and native test execution
 - Genix IR optimization
 - Ownership and memory safety
