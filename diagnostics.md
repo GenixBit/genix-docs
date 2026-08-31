@@ -2,7 +2,7 @@
 
 Genix compiler diagnostics are designed to be stable, source-aware, and useful from the command line, editors, CI systems, and future language-server tooling.
 
-> Status: pre-alpha. Error codes are now part of the developer-facing diagnostics contract, but individual wording may still improve before Genix 1.0.
+> Status: pre-alpha. Error codes, multi-file source identity, and primary/related diagnostic locations are now part of the developer-facing diagnostics contract, but individual wording may still improve before Genix 1.0.
 
 ## Diagnostic format
 
@@ -21,13 +21,57 @@ The diagnostic model contains:
 
 - stable error code
 - concise message
-- source filename
+- primary source filename
 - line and column
 - source span
 - primary label
+- zero or more related source locations
+- related labels
 - optional help text
 
-Lexer and parser errors use exact token/source spans. The first diagnostics implementation maps existing type-checker failures back to the most relevant source location through the frontend diagnostics adapter. Expression-level typed source maps will refine this further in later compiler revisions without changing the public error-code model.
+Lexer and parser errors use exact token/source spans. The diagnostics engine also supports secondary labels across files, rendered with `:::` rather than the primary `-->` marker.
+
+## Multi-file example
+
+Given an imported module with an invalid initializer:
+
+```gb
+// src/math.gb
+fn bad() -> int {
+    let value: int = "wrong";
+    return value;
+}
+```
+
+and an entry file that uses the module:
+
+```gb
+// src/main.gb
+import math;
+
+fn main() {
+    print(math.bad());
+}
+```
+
+project checking can report:
+
+```text
+error[E0201]: initializer for 'value' expected int, found string
+ --> src/math.gb:2:22
+   |
+ 2 |     let value: int = "wrong";
+   |                      ^^^^^^^ type mismatch
+ ::: src/main.gb:4:11
+   |
+ 4 |     print(math.bad());
+   |           ---- module referenced here
+  = help: change the expression or annotation so the types are compatible
+```
+
+The primary location identifies the failing source. Related locations provide context from other source files.
+
+See `source-maps.md` for the complete mapping architecture.
 
 ## Error-code families
 
@@ -59,7 +103,7 @@ produces an `E0001` diagnostic at the invalid character.
 | `E0103` | Invalid `match` pattern |
 | `E0104` | Invalid `Some` / `Ok` / `Err` / `None` constructor use |
 
-Parser diagnostics retain the exact token span and the source filename supplied by the frontend.
+Parser diagnostics retain the exact token span and source filename supplied by the frontend. Project-loaded modules now use the same structured lexer/parser path, so syntax failures in imported `.gb` files report the imported file directly.
 
 ### Type checking — `E020x`
 
@@ -130,6 +174,40 @@ An `Option<T>` match must handle both `Some(...)` and `None`; a `Result<T,string
 
 `?` diagnostics use `E0206`. The operator currently requires a `Result<T,string>` expression and a surrounding function that also returns a compatible `Result`.
 
+## Source maps
+
+Project loading maintains a source map containing:
+
+```text
+original source files
+canonical function → file
+module → file
+project entry file
+```
+
+This mapping survives the current module-namespacing and merge step used by the type checker.
+
+Semantic errors are therefore mapped back to the correct source file after checking rather than being reported against a synthetic merged program.
+
+The current semantic checker still returns pre-alpha string errors internally. A project-layer adapter identifies the failing function while preserving all project signatures, then maps that canonical function through the source map. The planned end state is a structured semantic checker that emits source IDs/spans directly.
+
+## Secondary locations
+
+Diagnostics can carry multiple related locations.
+
+Current uses include:
+
+- module reference related to an error inside an imported module
+- imported function definition related to a call/signature problem from another file
+
+Related locations use:
+
+```text
+ ::: file:line:column
+```
+
+This model is also intended for future declaration/borrow/trait/reference diagnostics.
+
 ## CLI behavior
 
 These commands use the diagnostics renderer for direct `.gb` source files:
@@ -140,7 +218,15 @@ gb run src/main.gb
 gb ir src/main.gb
 ```
 
-The project/module system continues to share the same lexer, parser, and type checker. Source mapping for merged multi-file type-checking will be expanded as the module source-map layer matures.
+Project commands use the same diagnostic model plus the multi-file source map:
+
+```bash
+gb check path/to/project
+gb run path/to/project
+gb build path/to/project
+```
+
+Errors discovered while loading/checking imported modules can therefore retain module file identity and related entry/module locations.
 
 ## CI contract
 
@@ -153,19 +239,28 @@ filename:line:column
 help:
 ```
 
-The suite currently checks representative lexer, parser, and type errors so diagnostics cannot silently regress to unstructured strings.
+The Rust compiler tests also construct a broken multi-file project and verify that the resulting project diagnostic contains:
+
+```text
+primary imported-module filename
+secondary ::: entry filename
+module referenced here
+```
+
+This prevents multi-file diagnostics from silently collapsing back to unstructured merged-project errors.
 
 ## Design direction
 
 The diagnostics model is intended to support future:
 
 - warnings and lints
-- multiple labels per diagnostic
-- secondary source locations
+- structured semantic expression spans
+- multiple primary/secondary labels
 - notes and suggestions
 - machine-readable JSON diagnostics
 - IDE/LSP diagnostics
 - quick fixes
+- go-to-definition/reference metadata
 - macro / generated-source traces if those language features are added
 
 The executable AST and Genix IR remain independent from CLI rendering concerns. Source metadata belongs to the frontend/source-map layer so interpreters and backends do not need to carry presentation-specific diagnostic state.
